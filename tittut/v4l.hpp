@@ -3,6 +3,7 @@
 #include <linux/videodev2.h>
 #include <stdexcept>
 #include <cstdio>
+#include <cstring>
 #include <sys/stat.h>
 #include <iostream>
 #include <sys/types.h>
@@ -24,31 +25,6 @@ private:
       throw std::runtime_error(std::string(msg) + " failed (" + std::to_string(ret) +
                           "): " + strerror(errno));
     }
-  }
-
-  V4L() : fd_(-1), buffer_(nullptr) {
-    bufferInfo_ = {};
-    fd_ = open("/dev/video0", O_RDWR);
-    if (fd_ < 0) {
-      throw std::runtime_error(std::string("Couldn't open /dev/video0: ") +
-                          strerror(errno));
-    }
-
-    getCapabilities();
-  }
-
-public:
-  V4L(V4L const &) = delete;
-  V4L &operator=(V4L const &) = delete;
-  ~V4L() {
-    call_ioctl("Deactivate streaming", VIDIOC_STREAMOFF, &bufferInfo_.type);
-    close(fd_);
-  }
-
-  static V4L &instance() {
-    static V4L v4l;
-
-    return v4l;
   }
 
   void getCapabilities() {
@@ -78,7 +54,9 @@ public:
     format.fmt.pix.height = height;
 
     call_ioctl("Set format", VIDIOC_S_FMT, &format);
+  }
 
+  void queryBuffers() {
     requestBuffers();
 
     bufferInfo_ = {};
@@ -89,20 +67,48 @@ public:
     call_ioctl("Query buffers", VIDIOC_QUERYBUF, &bufferInfo_);
   }
 
-  void *getBuffer() {
+public:
+  V4L(int width, int height, int pixelFormat) : fd_(-1), buffer_(nullptr) {
+    fd_ = open("/dev/video0", O_RDWR);
+    if (fd_ < 0) {
+      throw std::runtime_error(std::string("Couldn't open /dev/video0: ") +
+                          strerror(errno));
+    }
+
+    getCapabilities();
+    setFormat(width, height, pixelFormat);
+    queryBuffers();
+
     buffer_ = mmap(NULL, bufferInfo_.length, PROT_READ | PROT_WRITE, MAP_SHARED,
                    fd_, bufferInfo_.m.offset);
     if (buffer_ == MAP_FAILED) {
       throw std::runtime_error(std::string("mmap of buffer failed: ") + strerror(errno));
     }
+  }
 
-    call_ioctl("Activate streaming", VIDIOC_STREAMON, &bufferInfo_.type);
-
-    return buffer_;
+  V4L(V4L const &) = delete;
+  V4L &operator=(V4L const &) = delete;
+  ~V4L() {
+      if (munmap(buffer_, bufferInfo_.length)) {
+        std::cout << "ERROR: munmap failed!\n";
+      }
+    std::cout << "Destroying v4l\n";
+    call_ioctl("Deactivate streaming", VIDIOC_STREAMOFF, &bufferInfo_.type);
+    close(fd_);
   }
 
   void update() {
     call_ioctl("Put buffer in queue", VIDIOC_QBUF, &bufferInfo_);
     call_ioctl("Wait for buffer in queue", VIDIOC_DQBUF, &bufferInfo_);
   }
+
+  void *getBuffer() {
+
+    call_ioctl("Activate streaming", VIDIOC_STREAMON, &bufferInfo_.type);
+
+    update();
+
+    return buffer_;
+  }
+
 };
