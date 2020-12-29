@@ -11,18 +11,22 @@ using namespace std;
 
 
 int main(int argc, const char *argv[]) {
-  ArgParser parser("Tittut");
-  parser.description("Streaming application using Video4Linux and SDL2.");
-  parser.addArg("width").optional("-x").defaultValue(320);
-  parser.addArg("height").optional("-y").defaultValue(180);
-  parser.addArg("debug").optional("-d").defaultValue(false).description(
-      "Enable verbose printing.");
+  try {
+    ArgParser parser("Tittut");
+    parser.description("Streaming application using Video4Linux and SDL2.");
+    parser.addArg("width").optional("-x").defaultValue(320);
+    parser.addArg("height").optional("-y").defaultValue(180);
+    parser.addArg("debug").optional("-d").defaultValue(false).description(
+        "Enable verbose printing.");
 
-  parser.parse(argc, argv);
+    parser.parse(argc, argv);
 
-  int width = parser.get<int>("width");
-  int height = parser.get<int>("height");
+    int width = parser.get<int>("width");
+    int height = parser.get<int>("height");
 
-  SDLWindow win("SDL window", width, height);
-  win.run();
+    SDLWindow win("SDL window", width, height);
+    win.run();
+  } catch (exception &e) {
+    cout << "ERROR: " << e.what() << endl;
+  }
 }

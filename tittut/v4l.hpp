@@ -46,6 +46,9 @@ private:
   }
 
   void setFormat(int width, int height, int pixelFormat) {
+    if (width <= 0 || height <= 0)
+        throw std::invalid_argument(std::string("Invalid format dimensions: ") +
+                "Use \"v4l2-ctl --list-formats-ext\" to see available formats");
     v4l2_format format = {};
     format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     format.fmt.pix.pixelformat = pixelFormat;
@@ -53,6 +56,11 @@ private:
     format.fmt.pix.height = height;
 
     call_ioctl("Set format", VIDIOC_S_FMT, &format);
+
+    if (format.fmt.pix.width != static_cast<unsigned int>(width) ||
+        format.fmt.pix.height != static_cast<unsigned int>(height))
+        throw std::invalid_argument(std::string("Invalid format dimensions: ") +
+                "Use \"v4l2-ctl --list-formats-ext\" to see available formats");
   }
 
   void queryBuffers() {
