@@ -12,7 +12,6 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-// Singleton class that handles Video4Linux.
 class V4L {
 private:
   int fd_;
