@@ -15,7 +15,8 @@ int main(int argc, const char *argv[]) {
   parser.description("Streaming application using Video4Linux and SDL2.");
   parser.addArg("width").optional("-x").defaultValue(320);
   parser.addArg("height").optional("-y").defaultValue(180);
-  parser.addArg("debug").optional("-d").defaultValue(false);
+  parser.addArg("debug").optional("-d").defaultValue(false).description(
+      "Enable verbose printing.");
 
   parser.parse(argc, argv);
 
