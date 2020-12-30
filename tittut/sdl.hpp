@@ -7,6 +7,20 @@
 #include <iostream>
 #include <string>
 
+void initSDL() {
+    static bool initialized = false;
+    if (!initialized) {
+        if (SDL_Init(SDL_INIT_VIDEO)) {
+            throw std::runtime_error(std::string("Could not initialize SDL: ") + SDL_GetError());
+        }
+        std::atexit(SDL_Quit);
+        initialized = true;
+    }
+}
+
+// Window that renders a video stream.
+// NOTE: This class should only be constructed in the main thread because of
+//       how SDL works.
 class SDLWindow {
 private:
     std::string name_;
@@ -20,10 +34,7 @@ private:
 public:
   SDLWindow(const std::string &name, int width, int height) :
       name_(name), quit_(false), v4l_(width, height, V4L2_PIX_FMT_YUYV) {
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-      std::cout << "SDL_Init Error: " << SDL_GetError() << std::endl;
-      return;
-    }
+    initSDL();
 
     win_ = SDL_CreateWindow(name_.c_str(), 100, 100, width, height,
                             SDL_WINDOW_SHOWN);
@@ -56,15 +67,12 @@ public:
   }
 
   ~SDLWindow() {
-      std::cout << "Destroying SDLWindow\n";
     SDL_DestroyWindow(win_);
     const char *error = SDL_GetError();
     if (*error) {
       SDL_Log("SDL error: %s", error);
       SDL_ClearError();
     }
-
-    SDL_Quit();
   }
 
   void updateTexture(void *buffer) {
