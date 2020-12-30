@@ -4,6 +4,8 @@
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <memory>
+#include <functional>
 #include <iostream>
 #include <string>
 
@@ -30,29 +32,28 @@ void initSDL() {
 class SDLWindow {
 private:
     std::string name_;
-    SDL_Window *win_ = nullptr;
+    std::unique_ptr<SDL_Window, std::function<void(SDL_Window*)>>
+        win_{nullptr, [](SDL_Window* w) { SDL_DestroyWindow(w); }};
     SDL_Renderer *ren_ = nullptr;
     SDL_Texture *texture_ = nullptr;
     SDL_Rect rect_ = {};
-    bool quit_;
+    bool quit_ = false;
     V4L v4l_;
 
 public:
     SDLWindow(const std::string &name, int width, int height) :
-              name_(name), quit_(false),
-              v4l_(width, height, V4L2_PIX_FMT_YUYV) {
+              name_(name), v4l_(width, height, V4L2_PIX_FMT_YUYV) {
         initSDL();
 
-        win_ = SDL_CreateWindow(name_.c_str(), 100, 100, width, height,
-                                SDL_WINDOW_SHOWN);
-        if (win_ == nullptr) {
+        win_.reset(SDL_CreateWindow(name_.c_str(), 100, 100, width, height,
+                                SDL_WINDOW_SHOWN));
+        if (win_.get() == nullptr) {
             sdlError("SDL_CreateWindow");
         }
 
         ren_ = SDL_CreateRenderer(
-            win_, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+            win_.get(), -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
         if (ren_ == nullptr) {
-            SDL_DestroyWindow(win_);
             sdlError("SDL_CreateRenderer");
         }
 
@@ -61,17 +62,12 @@ public:
                                      width,
                                      height);
         if (texture_ == nullptr) {
-            SDL_DestroyWindow(win_);
             sdlError("SDL_CreateTexture");
         }
 
         rect_.w = width;
         rect_.h = height;
   }
-
-    ~SDLWindow() {
-        SDL_DestroyWindow(win_);
-    }
 
   void updateTexture(void *buffer) {
     if (SDL_UpdateTexture(texture_, &rect_, buffer, rect_.w * 2))
