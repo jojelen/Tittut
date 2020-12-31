@@ -38,11 +38,11 @@ private:
     SDL_Texture *texture_ = nullptr;
     SDL_Rect rect_ = {};
     bool quit_ = false;
-    V4L v4l_;
+    std::unique_ptr<VideoStream> videoStream_;
 
 public:
-    SDLWindow(const std::string &name, int width, int height) :
-              name_(name), v4l_(width, height, V4L2_PIX_FMT_YUYV) {
+    SDLWindow(const std::string &name, int width, int height, std::unique_ptr<VideoStream> &stream) :
+              name_(name), videoStream_(std::move(stream)) {
         initSDL();
 
         win_.reset(SDL_CreateWindow(name_.c_str(), 100, 100, width, height,
@@ -102,10 +102,10 @@ public:
   }
 
   void run() {
-    void *buffer = v4l_.getBuffer();
+    void *buffer = videoStream_->getBuffer();
     while (!quit_) {
         pollEvents();
-        v4l_.update();
+        videoStream_->update();
         updateTexture(buffer);
         render();
     }

@@ -10,28 +10,30 @@
 using namespace std;
 
 int main(int argc, const char *argv[]) {
-  try {
-    ArgParser parser("Tittut");
-    parser.description("Streaming application using Video4Linux and SDL2.");
-    parser.addArg("width").optional("-x").defaultValue(320);
-    parser.addArg("height").optional("-y").defaultValue(180);
-    parser.addArg("debug").optional("-d").defaultValue(false).description(
-        "Enable verbose printing.");
-    parser.addArg("tcp").optional("-t").defaultValue(false).description(
-        "Connect to video stream over tcp.");
+    try {
+        ArgParser parser("Tittut");
+        parser.description("Streaming application using Video4Linux and SDL2.");
+        parser.addArg("width").optional("-x").defaultValue(320);
+        parser.addArg("height").optional("-y").defaultValue(180);
+        parser.addArg("debug").optional("-d").defaultValue(false).description(
+            "Enable verbose printing.");
+        parser.addArg("tcp").optional("-t").defaultValue(false).description(
+            "Connect to video stream over tcp.");
 
-    parser.parse(argc, argv);
+        parser.parse(argc, argv);
 
-    if (parser.get<bool>("tcp")) {
-      connectToServer();
-    } else {
-      int width = parser.get<int>("width");
-      int height = parser.get<int>("height");
+        if (parser.get<bool>("tcp")) {
+            connectToServer();
+        } else {
+            int width = parser.get<int>("width");
+            int height = parser.get<int>("height");
 
-      SDLWindow win("SDL window", width, height);
-      win.run();
+            unique_ptr<VideoStream> stream =
+                make_unique<V4L>(width, height, V4L2_PIX_FMT_YUYV);
+            SDLWindow win("SDL window", width, height, stream);
+            win.run();
+        }
+    } catch (exception &e) {
+        cout << "ERROR: " << e.what() << endl;
     }
-  } catch (exception &e) {
-    cout << "ERROR: " << e.what() << endl;
-  }
 }

@@ -11,4 +11,5 @@ executable('client', client_src,
 
 executable('server', server_src,
            cpp_args: [cpp_args, '-pthread'],
-           include_directories: [tittut_inc], dependencies: [thread_dep])
+           include_directories: [tittut_inc],
+           dependencies: [sdl_dep,thread_dep])

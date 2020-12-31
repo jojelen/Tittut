@@ -119,16 +119,20 @@ class V4L : public VideoStream {
         close(fd_);
     }
 
-    void update() const override {
+    void update() override {
         call_ioctl("Put buffer in queue", VIDIOC_QBUF, &bufferInfo_);
         call_ioctl("Wait for buffer in queue", VIDIOC_DQBUF, &bufferInfo_);
     }
 
-    void *getBuffer() const override {
+    void *getBuffer() override {
         call_ioctl("Activate streaming", VIDIOC_STREAMON, &bufferInfo_.type);
 
         update();
 
         return buffer_;
+    }
+
+    size_t getBufferSize() const {
+        return bufferInfo_.length;
     }
 };

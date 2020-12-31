@@ -4,6 +4,7 @@
  * by Isaac Maia
  */
 #include "tcp.hpp"
+#include "v4l.hpp"
 
 #include <algorithm>
 
@@ -16,126 +17,84 @@
 #include <thread>
 #include <unistd.h>
 
-void display(int socket);
+class VideoServer {
+    int localSocket_ = -1;
+    int port_ = -1;
+    struct sockaddr_in localAddress_ = {};
 
-// int capDev = 0;
+    void connectionWork(int socket) {
+        try {
+            sendMsg(socket, "Connection established");
 
-// VideoCapture cap(capDev); // open the default camera
+            // Get video stream config.
+            Package pkg = {};
+            getPackage(socket, pkg);
+            int width = static_cast<int>(getNumFromVec(0, pkg.data));
+            int height = static_cast<int>(getNumFromVec(1, pkg.data));
+            std::cout << "Got width = " << width << std::endl;
+            std::cout << "Got height = " << height << std::endl;
+            V4L v4l(width, height, V4L2_PIX_FMT_YUYV);
 
-int main(int argc, char **argv) {
-  //--------------------------------------------------------
-  // networking stuff: socket, bind, listen
-  //--------------------------------------------------------
-  int localSocket, remoteSocket, port = 4097;
+            void *buffer = v4l.getBuffer();
+            size_t bufferSize = v4l.getBufferSize();
 
-  struct sockaddr_in localAddr, remoteAddr;
+            while (true) {
+                sendBuffer(socket, buffer, bufferSize);
+                v4l.update();
+            }
 
-  int addrLen = sizeof(struct sockaddr_in);
+            std::cout << "Finished sending bytes!\n";
+        } catch (std::exception const &e) {
+            std::cerr << "ERROR: Failed to process client: " << e.what()
+                      << std::endl;
+        }
 
-  if ((argc > 1) && (strcmp(argv[1], "-h") == 0)) {
-    std::cerr << "usage: ./cv_video_srv [port] [capture device]\n"
-              << "port           : socket port (4097 default)\n"
-              << "capture device : (0 default)\n"
-              << std::endl;
-
-    exit(1);
-  }
-
-  if (argc == 2)
-    port = atoi(argv[1]);
-
-  localSocket = socket(AF_INET, SOCK_STREAM, 0);
-  if (localSocket == -1) {
-    perror("socket() call failed!!");
-  }
-
-  localAddr.sin_family = AF_INET;
-  localAddr.sin_addr.s_addr = INADDR_ANY;
-  localAddr.sin_port = htons(port);
-
-  if (bind(localSocket, (struct sockaddr *)&localAddr, sizeof(localAddr)) < 0) {
-    perror("Can't bind() socket");
-    exit(1);
-  }
-
-  // Listening
-  listen(localSocket, 3);
-
-  std::cout << "Waiting for connections...\n"
-            << "Server Port:" << port << std::endl;
-
-  // accept connection from an incoming client
-  while (1) {
-    // if (remoteSocket < 0) {
-    //    perror("accept failed!");
-    //    exit(1);
-    //}
-
-    remoteSocket = accept(localSocket, (struct sockaddr *)&remoteAddr,
-                          (socklen_t *)&addrLen);
-    // std::cout << remoteSocket<< "32"<< std::endl;
-    if (remoteSocket < 0) {
-      perror("accept failed!");
-      exit(1);
+        close(socket);
     }
-    std::cout << "Connection accepted" << std::endl;
 
-    std::thread connectionThread(display, remoteSocket);
-    // pthread_create(&thread_id, NULL, display, &remoteSocket);
-    //
-    connectionThread.join();
+  public:
+    VideoServer(int port) : port_(port) {
+        localSocket_ = socket(AF_INET, SOCK_STREAM, 0);
+        if (localSocket_ == -1) {
+            perror("socket() call failed!!");
+        }
 
-    // pthread_join(thread_id,NULL);
-  }
-  // pthread_join(thread_id,NULL);
-  // close(remoteSocket);
+        localAddress_.sin_family = AF_INET;
+        localAddress_.sin_addr.s_addr = INADDR_ANY;
+        localAddress_.sin_port = htons(port_);
 
-  return 0;
-}
+        if (bind(localSocket_, (struct sockaddr *)&localAddress_,
+                 sizeof(localAddress_)) < 0) {
+            perror("Can't bind() socket");
+            exit(1);
+        }
+    }
+    ~VideoServer() { close(localSocket_); }
 
-void display(int socket) {
-  // OpenCV Code
-  //----------------------------------------------------------
+    void run() {
+        listen(localSocket_, 3);
 
-  // Mat img, imgGray;
-  // img = Mat::zeros(480, 640, CV_8UC1);
-  //// make it continuous
-  // if (!img.isContinuous()) {
-  //  img = img.clone();
-  //}
+        std::cout << "Waiting for connections...\n"
+                  << "Server Port:" << port_ << std::endl;
 
-  // int imgSize = img.total() * img.elemSize();
-  // int bytes = 0;
-  // int key;
+        // accept connection from an incoming client
+        int remoteSocket = -1;
+        constexpr int addrLen = sizeof(struct sockaddr_in);
+        struct sockaddr_in remoteAddr = {};
+        while (true) {
+            remoteSocket = accept(localSocket_, (struct sockaddr *)&remoteAddr,
+                                  (socklen_t *)&addrLen);
+            if (remoteSocket < 0) {
+                throw std::runtime_error("Could not accept connection");
+            }
+            std::cout << "Connection accepted" << std::endl; // DEBUG
 
-  //// make img continuos
-  // if (!img.isContinuous()) {
-  //  img = img.clone();
-  //  imgGray = img.clone();
-  //}
+            connectionWork(remoteSocket);
+        }
+    }
+};
 
-  // std::cout << "Image Size:" << imgSize << std::endl;
-
-  // while (1) {
-
-  //  /* get a frame from camera */
-  //  //cap >> img;
-
-  //  // do video processing here
-  //  //cvtColor(img, imgGray, CV_BGR2GRAY);
-
-  //
-  //  // send processed image
-  //  if ((bytes = send(socket, imgGray.data, imgSize, 0)) < 0) {
-  //    std::cerr << "bytes = " << bytes << std::endl;
-  //    break;
-  //  }
-  //}
-
-  sendMsg(socket, "Hello there");
-  sendMsg(socket, "From server");
-
-  std::cout << "Finished sending bytes!\n";
-
-  close(socket);
+int main() {
+    VideoServer server(4097);
+    server.run();
 }

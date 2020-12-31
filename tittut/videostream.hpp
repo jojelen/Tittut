@@ -8,6 +8,6 @@ class VideoStream {
         VideoStream() : buffer_(nullptr) {}
         virtual ~VideoStream() {}
 
-        virtual void* getBuffer() const = 0;
-        virtual void update() const = 0;
+        virtual void* getBuffer() = 0;
+        virtual void update() = 0;
 };
