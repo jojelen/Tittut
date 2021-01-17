@@ -98,10 +98,12 @@ void getPackage(int socket, Package &pkg) {
 
     if (pkg.type > PKG_TYPE::CLOSED)
         readPackageData(socket, pkg, dataSize);
+    else
+        throw std::runtime_error("Connection closed");
 }
 
-void addNumToVec(size_t num, std::vector<uint8_t> &vec) {
-    if (num >= UINT64_MAX)
+void addNumToVec(uint64_t num, std::vector<uint8_t> &vec) {
+    if (sizeof(size_t) > sizeof(uint64_t) && num >= UINT64_MAX)
         throw std::invalid_argument("Too large num");
 
     uint64_t castedNum = static_cast<uint64_t>(num);
@@ -191,7 +193,7 @@ void sendStreamConfig(int socket, const StreamConfig &cfg) {
 
 class TcpVideoStream : public VideoStream {
     int socket_ = -1;
-    Package pkg_ = {};
+    Package frame_ = {};
 
     void setupStream(int width, int height) const {
         std::cout << "Setting up stream\n";
@@ -222,19 +224,36 @@ class TcpVideoStream : public VideoStream {
 
         setupStream(width, height);
 
-        pkg_.data.resize(width * height * 2);
+        frame_.type = PKG_TYPE::FRAME;
+        frame_.data.resize(width * height * 2);
     }
 
     ~TcpVideoStream() { close(socket_); }
 
     inline void *getBuffer() override {
-        return static_cast<void *>(pkg_.data.data());
+        return static_cast<void *>(frame_.data.data());
     }
 
     void update() override {
-        getPackage(socket_, pkg_);
-        if (pkg_.type == PKG_TYPE::TEXT)
-            readPackage(pkg_);
+        PKG_TYPE type = PKG_TYPE::INVALID;
+        uint64_t dataSize = 0; 
+        do {
+            std::tie(type, dataSize) = readPackageHeader(socket_);
+            if (type == PKG_TYPE::TEXT) {
+                Package pkg = { .type = PKG_TYPE::TEXT, .data = {}};
+                readPackageData(socket_, pkg, dataSize);
+                readPackage(pkg);
+            }
+            else if (type != PKG_TYPE::FRAME) {
+                std::cerr << "WARNING: Throwing away non-frame message\n";
+            }
+        } while (type != PKG_TYPE::FRAME);
+
+        if (dataSize != frame_.data.size()){
+            std::cerr << "WARNING: Frame changed size\n";
+        }
+        
+        readPackageData(socket_, frame_, dataSize); 
     }
 };
 
