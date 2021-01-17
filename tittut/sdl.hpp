@@ -106,6 +106,7 @@ public:
     while (!quit_) {
         pollEvents();
         videoStream_->update();
+        buffer = videoStream_->getBuffer();
         updateTexture(buffer);
         render();
     }

@@ -30,6 +30,11 @@ public:
 
   Arg(std::string_view name) : name_(name.data()) {}
 
+  Arg &defaultValue(const char* val) {
+    value_ = std::string(val);
+    return *this;
+  }
+
   template <typename T> Arg &defaultValue(T val) {
     value_ = val;
     return *this;
@@ -44,7 +49,19 @@ public:
     desc_ = desc.data();
     return *this;
   }
+
+  friend std::ostream& operator<<(std::ostream &os, const Arg& arg);
 };
+
+  std::ostream& operator<<(std::ostream &os, const Arg& arg)
+  {
+    os << "\t" << arg.optionalName_.value() << "\t" << arg.name_ << "\t";
+    std::visit([&os](auto&& var){os << var;}, arg.value_);
+    if (arg.desc_.has_value())
+      os << "\t" << arg.desc_.value();
+
+    return os;
+  }
 
 void assignArg(Arg *arg, const char *argv) {
   if (std::holds_alternative<int>(arg->value_)) {
@@ -71,7 +88,6 @@ private:
   void printHelp(const char *argvZero) {
     std::cout << title_ << "\n\n" << description_ << "\n";
 
-
     // Sort optional arguments alphabetically,
     std::sort(
         optionalArgs_.begin(), optionalArgs_.end(), [](Arg *arg1, Arg *arg2) {
@@ -88,9 +104,12 @@ private:
     if (!optionalArgs_.empty()) {
       std::cout << "\nOptional arguments:\n";
       for (auto &arg : optionalArgs_) {
-        std::cout << "\t" << arg->optionalName_.value() << "\t" << arg->name_;
-        if (arg->desc_.has_value())
-            std::cout << "\t" << arg->desc_.value();
+          std::cout << *arg;
+
+        //std::cout << "\t" << arg->optionalName_.value() << "\t" << arg->name_ <<
+        //    "(" << arg->value_ << ")";
+        //if (arg->desc_.has_value())
+        //    std::cout << "\t" << arg->desc_.value();
         std::cout << std::endl;
       }
     }

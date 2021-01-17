@@ -1,7 +1,7 @@
 #pragma once
 
-#include "videostream.hpp"
 #include "sdl.hpp"
+#include "videostream.hpp"
 
 #include <arpa/inet.h>
 #include <assert.h>
@@ -17,7 +17,7 @@
 
 // TODO: Endieness has to be the same on each machine.
 
-enum class PkgType { STREAM_CONFIG, FRAME, TEXT };
+enum class PkgType { STREAM_CONFIG = 0, FRAME = 1, TEXT = 2 };
 
 struct StreamConfig {
     uint64_t width;
@@ -35,7 +35,7 @@ struct Package {
     std::vector<uint8_t> data;
 };
 
-bool getPackage(int socket, Package &pkg) {
+bool readPackageHeader(int socket, Package &pkg) {
     std::vector<uint8_t> header(HEADER_SIZE);
     int bytes = recv(socket, static_cast<void *>(header.data()), HEADER_SIZE,
                      MSG_WAITALL);
@@ -43,7 +43,10 @@ bool getPackage(int socket, Package &pkg) {
         std::cout << "Connection closed\n";
         return false;
     } else if (bytes < 0) {
-        throw std::runtime_error(std::string("Failed reading reading out package header from socket: ") + strerror(errno));
+        throw std::runtime_error(
+            std::string(
+                "Failed reading reading out package header from socket: ") +
+            strerror(errno));
     }
 
     uint64_t dataSize = 0;
@@ -53,13 +56,27 @@ bool getPackage(int socket, Package &pkg) {
 
     if (pkg.data.size() != dataSize)
         pkg.data.resize(dataSize);
+    pkg.type = static_cast<PkgType>(pkgType);
 
-    bytes = recv(socket, static_cast<void *>(pkg.data.data()), dataSize,
+    return true;
+}
+
+bool getPackage(int socket, Package &pkg) {
+    if (!readPackageHeader(socket, pkg)){
+        return false;
+    }
+
+    int bytes = recv(socket, static_cast<void *>(pkg.data.data()), pkg.data.size(),
                  MSG_WAITALL);
     if (bytes < 0) {
-        throw std::runtime_error(std::string("Failed reading reading out package data from socket: ") + strerror(errno));
+        throw std::runtime_error(
+            std::string(
+                "Failed reading reading out package data from socket: ") +
+            strerror(errno));
     }
-    pkg.type = static_cast<PkgType>(pkgType);
+
+    std::cout << "Read type " << static_cast<int>(pkg.type) << " package of " <<
+        pkg.data.size() << " bytes\n";
 
     return true;
 }
@@ -75,7 +92,7 @@ void addNumToVec(size_t num, std::vector<uint8_t> &vec) {
 }
 
 size_t getNumFromVec(size_t idx, const std::vector<uint8_t> &vec) {
-    assert(vec.size() >= idx*sizeof(uint64_t));
+    assert(vec.size() >= idx * sizeof(uint64_t));
 
     uint64_t num = 0;
     std::memcpy(&num, vec.data() + idx * sizeof(uint64_t), sizeof(uint64_t));
@@ -105,7 +122,7 @@ void sendPackage(int socket, PkgType type, const std::vector<uint8_t> &data) {
               << data.size() << std::endl;
 }
 
-void sendBuffer(int socket, const void* buffer, size_t bufferSize) {
+void sendBuffer(int socket, const void *buffer, size_t bufferSize) {
     std::vector<uint8_t> header;
     addNumToVec(bufferSize, header);
     addNumToVec(static_cast<size_t>(PkgType::FRAME), header);
@@ -118,13 +135,12 @@ void sendBuffer(int socket, const void* buffer, size_t bufferSize) {
         throw std::runtime_error("Could not send header of package");
     }
 
-    bytes =
-        send(socket, buffer, bufferSize, 0);
+    bytes = send(socket, buffer, bufferSize, 0);
     if (bytes < 0) {
         throw std::runtime_error("Could not send data of package");
     }
-    std::cout << "Sent " << bytes << " bytes data with data size "
-              << bufferSize << std::endl;
+    std::cout << "Sent " << bytes << " bytes data with data size " << bufferSize
+              << std::endl;
 }
 
 void sendMsg(int socket, std::string_view msg) {
@@ -187,23 +203,27 @@ class TcpVideoStream : public VideoStream {
 
         setupStream(width, height);
 
-        pkg_.data.resize(width*height*2);
+        pkg_.data.resize(width * height * 2);
     }
     ~TcpVideoStream() { close(socket_); }
 
     void *getBuffer() override {
-        void* buffer = static_cast<void*> (pkg_.data.data());
-        return buffer; }
+        void *buffer = static_cast<void *>(pkg_.data.data());
+        return buffer;
+    }
     void update() override {
-            if (!getPackage(socket_, pkg_))
-                std::cerr << "Some trouble occured\n";
+        if (!getPackage(socket_, pkg_))
+            std::cerr << "Some trouble occured\n";
     }
 };
 
-void connectToServer() {
+void connectToServer(const std::string &ip, int port, int width, int height) {
     try {
-        std::unique_ptr<VideoStream> stream= std::make_unique<TcpVideoStream>("127.0.0.1", 4097, 320, 180);
-        SDLWindow win("SDL window", 320, 180, stream);
+        std::unique_ptr<VideoStream> stream =
+            std::make_unique<TcpVideoStream>(ip, port, width, height);
+        std::string windowName = "Video stream from " + ip + ":" +
+            std::to_string(port);
+        SDLWindow win(windowName, width, height, stream);
         win.run();
     } catch (std::exception const &e) {
         std::cerr << "ERROR: " << e.what() << std::endl;

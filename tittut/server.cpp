@@ -29,6 +29,8 @@ class VideoServer {
             // Get video stream config.
             Package pkg = {};
             getPackage(socket, pkg);
+            if (pkg.type != PkgType::STREAM_CONFIG)
+                std::cerr << "ERROR: Wrong package recieved\n";
             int width = static_cast<int>(getNumFromVec(0, pkg.data));
             int height = static_cast<int>(getNumFromVec(1, pkg.data));
             std::cout << "Got width = " << width << std::endl;
