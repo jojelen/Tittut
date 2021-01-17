@@ -29,7 +29,7 @@ class VideoServer {
             // Get video stream config.
             Package pkg = {};
             getPackage(socket, pkg);
-            if (pkg.type != PkgType::STREAM_CONFIG)
+            if (pkg.type != PKG_TYPE::STREAM_CONFIG)
                 std::cerr << "ERROR: Wrong package recieved\n";
             int width = static_cast<int>(getNumFromVec(0, pkg.data));
             int height = static_cast<int>(getNumFromVec(1, pkg.data));
@@ -41,14 +41,13 @@ class VideoServer {
             size_t bufferSize = v4l.getBufferSize();
 
             while (true) {
-                sendBuffer(socket, buffer, bufferSize);
                 v4l.update();
+                sendBuffer(socket, buffer, bufferSize);
             }
 
             std::cout << "Finished sending bytes!\n";
         } catch (std::exception const &e) {
-            std::cerr << "ERROR: Failed to process client: " << e.what()
-                      << std::endl;
+            std::cerr << "Closing connection: " << e.what() << std::endl;
         }
 
         close(socket);

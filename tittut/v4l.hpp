@@ -102,6 +102,8 @@ class V4L : public VideoStream {
             setFormat(width, height, pixelFormat);
             queryBuffer();
             mapBuffer();
+
+            call_ioctl("Activate streaming", VIDIOC_STREAMON, &bufferInfo_.type);
         } catch (std::exception const &e) {
             close(fd_);
             throw e;
@@ -124,15 +126,11 @@ class V4L : public VideoStream {
         call_ioctl("Wait for buffer in queue", VIDIOC_DQBUF, &bufferInfo_);
     }
 
-    void *getBuffer() override {
-        call_ioctl("Activate streaming", VIDIOC_STREAMON, &bufferInfo_.type);
-
-        update();
-
+    inline void *getBuffer() override {
         return buffer_;
     }
 
-    size_t getBufferSize() const {
+    inline size_t getBufferSize() const {
         return bufferInfo_.length;
     }
 };

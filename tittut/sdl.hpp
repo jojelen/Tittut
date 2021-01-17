@@ -102,12 +102,10 @@ public:
   }
 
   void run() {
-    void *buffer = videoStream_->getBuffer();
     while (!quit_) {
         pollEvents();
         videoStream_->update();
-        buffer = videoStream_->getBuffer();
-        updateTexture(buffer);
+        updateTexture(videoStream_->getBuffer());
         render();
     }
   }

@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
+#include <tuple>
 #include <unistd.h>
 #include <vector>
 
@@ -17,7 +18,14 @@
 
 // TODO: Endieness has to be the same on each machine.
 
-enum class PkgType { STREAM_CONFIG = 0, FRAME = 1, TEXT = 2 };
+enum class PKG_TYPE {
+    INVALID = -1,
+    CLOSED = 0,
+    STREAM_CONFIG = 1,
+    FRAME = 2,
+    TEXT = 3,
+    NUM_TYPES = 4
+};
 
 struct StreamConfig {
     uint64_t width;
@@ -31,17 +39,18 @@ struct StreamConfig {
 // uint8_t ...
 // uint8_t data
 struct Package {
-    PkgType type;
+    PKG_TYPE type;
     std::vector<uint8_t> data;
 };
 
-bool readPackageHeader(int socket, Package &pkg) {
+// Read out the next package's type and data size.
+std::tuple<PKG_TYPE, uint64_t> readPackageHeader(int socket) {
     std::vector<uint8_t> header(HEADER_SIZE);
     int bytes = recv(socket, static_cast<void *>(header.data()), HEADER_SIZE,
                      MSG_WAITALL);
     if (bytes == 0) {
         std::cout << "Connection closed\n";
-        return false;
+        return std::tuple{PKG_TYPE::CLOSED, 0};
     } else if (bytes < 0) {
         throw std::runtime_error(
             std::string(
@@ -54,20 +63,23 @@ bool readPackageHeader(int socket, Package &pkg) {
     uint64_t pkgType = 0;
     std::memcpy(&pkgType, header.data() + sizeof(uint64_t), sizeof(uint64_t));
 
-    if (pkg.data.size() != dataSize)
-        pkg.data.resize(dataSize);
-    pkg.type = static_cast<PkgType>(pkgType);
+    const static uint64_t MAX_TYPES =
+        static_cast<uint64_t>(PKG_TYPE::NUM_TYPES);
+    PKG_TYPE type = (pkgType >= MAX_TYPES) ? PKG_TYPE::INVALID
+                                           : static_cast<PKG_TYPE>(pkgType);
 
-    return true;
+    std::cout << "Recieved type " << static_cast<size_t>(pkgType)
+              << " message of " << dataSize << " bytes\n";
+
+    return std::tuple{type, dataSize};
 }
 
-bool getPackage(int socket, Package &pkg) {
-    if (!readPackageHeader(socket, pkg)){
-        return false;
-    }
+void readPackageData(int socket, Package &pkg, uint64_t size) {
+    if (size > pkg.data.size())
+        pkg.data.resize(size);
 
-    int bytes = recv(socket, static_cast<void *>(pkg.data.data()), pkg.data.size(),
-                 MSG_WAITALL);
+    int bytes =
+        recv(socket, static_cast<void *>(pkg.data.data()), size, MSG_WAITALL);
     if (bytes < 0) {
         throw std::runtime_error(
             std::string(
@@ -75,10 +87,17 @@ bool getPackage(int socket, Package &pkg) {
             strerror(errno));
     }
 
-    std::cout << "Read type " << static_cast<int>(pkg.type) << " package of " <<
-        pkg.data.size() << " bytes\n";
+    // DEBUG
+    std::cout << "Read " << bytes << " of " << size << " bytes of type "
+              << static_cast<int>(pkg.type) << " message\n";
+}
 
-    return true;
+void getPackage(int socket, Package &pkg) {
+    uint64_t dataSize = 0;
+    std::tie(pkg.type, dataSize) = readPackageHeader(socket);
+
+    if (pkg.type > PKG_TYPE::CLOSED)
+        readPackageData(socket, pkg, dataSize);
 }
 
 void addNumToVec(size_t num, std::vector<uint8_t> &vec) {
@@ -100,7 +119,7 @@ size_t getNumFromVec(size_t idx, const std::vector<uint8_t> &vec) {
     return static_cast<uint64_t>(num);
 }
 
-void sendPackage(int socket, PkgType type, const std::vector<uint8_t> &data) {
+void sendPackage(int socket, PKG_TYPE type, const std::vector<uint8_t> &data) {
     std::vector<uint8_t> header;
     addNumToVec(data.size(), header);
     addNumToVec(static_cast<size_t>(type), header);
@@ -125,17 +144,17 @@ void sendPackage(int socket, PkgType type, const std::vector<uint8_t> &data) {
 void sendBuffer(int socket, const void *buffer, size_t bufferSize) {
     std::vector<uint8_t> header;
     addNumToVec(bufferSize, header);
-    addNumToVec(static_cast<size_t>(PkgType::FRAME), header);
+    addNumToVec(static_cast<size_t>(PKG_TYPE::FRAME), header);
 
     assert(header.size() == HEADER_SIZE);
 
-    int bytes =
-        send(socket, static_cast<const void *>(header.data()), HEADER_SIZE, 0);
+    int bytes = send(socket, static_cast<const void *>(header.data()),
+                     HEADER_SIZE, MSG_NOSIGNAL);
     if (bytes < 0) {
         throw std::runtime_error("Could not send header of package");
     }
 
-    bytes = send(socket, buffer, bufferSize, 0);
+    bytes = send(socket, buffer, bufferSize, MSG_NOSIGNAL);
     if (bytes < 0) {
         throw std::runtime_error("Could not send data of package");
     }
@@ -146,13 +165,13 @@ void sendBuffer(int socket, const void *buffer, size_t bufferSize) {
 void sendMsg(int socket, std::string_view msg) {
     std::vector<uint8_t> data(msg.length());
     std::copy(msg.begin(), msg.end(), data.begin());
-    std::cout << "Sending msg(" << msg << "), data.size=" << data.size()
+    std::cout << "Sending msg \"" << msg << "\", data.size=" << data.size()
               << std::endl;
-    sendPackage(socket, PkgType::TEXT, data);
+    sendPackage(socket, PKG_TYPE::TEXT, data);
 }
 
-void readPkg(const Package &pkg) {
-    if (pkg.type == PkgType::TEXT) {
+void readPackage(const Package &pkg) {
+    if (pkg.type == PKG_TYPE::TEXT) {
         std::string msg(pkg.data.begin(), pkg.data.end());
         std::cout << "Recieved msg: " << msg << std::endl;
     } else {
@@ -167,7 +186,7 @@ void sendStreamConfig(int socket, const StreamConfig &cfg) {
     addNumToVec(static_cast<size_t>(cfg.width), data);
     addNumToVec(static_cast<size_t>(cfg.height), data);
 
-    sendPackage(socket, PkgType::STREAM_CONFIG, data);
+    sendPackage(socket, PKG_TYPE::STREAM_CONFIG, data);
 }
 
 class TcpVideoStream : public VideoStream {
@@ -205,15 +224,17 @@ class TcpVideoStream : public VideoStream {
 
         pkg_.data.resize(width * height * 2);
     }
+
     ~TcpVideoStream() { close(socket_); }
 
-    void *getBuffer() override {
-        void *buffer = static_cast<void *>(pkg_.data.data());
-        return buffer;
+    inline void *getBuffer() override {
+        return static_cast<void *>(pkg_.data.data());
     }
+
     void update() override {
-        if (!getPackage(socket_, pkg_))
-            std::cerr << "Some trouble occured\n";
+        getPackage(socket_, pkg_);
+        if (pkg_.type == PKG_TYPE::TEXT)
+            readPackage(pkg_);
     }
 };
 
@@ -221,8 +242,8 @@ void connectToServer(const std::string &ip, int port, int width, int height) {
     try {
         std::unique_ptr<VideoStream> stream =
             std::make_unique<TcpVideoStream>(ip, port, width, height);
-        std::string windowName = "Video stream from " + ip + ":" +
-            std::to_string(port);
+        std::string windowName =
+            "Video stream from " + ip + ":" + std::to_string(port);
         SDLWindow win(windowName, width, height, stream);
         win.run();
     } catch (std::exception const &e) {
