@@ -1,5 +1,6 @@
 #pragma once
 
+#include "utils.hpp"
 #include "videostream.hpp"
 
 #include <cstdio>
@@ -13,7 +14,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-
 
 class V4L : public VideoStream {
   private:
@@ -103,7 +103,8 @@ class V4L : public VideoStream {
             queryBuffer();
             mapBuffer();
 
-            call_ioctl("Activate streaming", VIDIOC_STREAMON, &bufferInfo_.type);
+            call_ioctl("Activate streaming", VIDIOC_STREAMON,
+                       &bufferInfo_.type);
         } catch (std::exception const &e) {
             close(fd_);
             throw e;
@@ -122,15 +123,12 @@ class V4L : public VideoStream {
     }
 
     void update() override {
+        Timer timer("Buffer ioctls in update");
         call_ioctl("Put buffer in queue", VIDIOC_QBUF, &bufferInfo_);
         call_ioctl("Wait for buffer in queue", VIDIOC_DQBUF, &bufferInfo_);
     }
 
-    inline void *getBuffer() override {
-        return buffer_;
-    }
+    inline void *getBuffer() override { return buffer_; }
 
-    inline size_t getBufferSize() const {
-        return bufferInfo_.length;
-    }
+    inline size_t getBufferSize() const { return bufferInfo_.length; }
 };
