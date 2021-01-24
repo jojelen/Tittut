@@ -14,18 +14,36 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <vector>
+#include <thread>
+#include <chrono>
+
+struct Frame {
+    void *data;
+    v4l2_buffer buffer;
+    bool inQueue;
+};
 
 class V4L : public VideoStream {
   private:
-    int fd_;
-    v4l2_buffer bufferInfo_;
+    int fd_ = -1;
+    std::vector<Frame> buffers_;
+    size_t currFrame_ = 0;
+    static constexpr size_t NUM_BUFFERS = 2;
 
     void call_ioctl(std::string_view msg, unsigned long int req,
                     const void *arg) const {
+        using namespace std::chrono_literals;
+
         int ret = -1;
-        do {
+        while (true) {
             ret = ioctl(fd_, req, arg);
-        } while (ret < 0 && errno == EAGAIN);
+            if (ret < 0 && errno == EAGAIN){
+                std::this_thread::sleep_for(2ms);
+            } else {
+                break;
+            }
+        }
 
         if (ret < 0) {
             throw std::runtime_error(std::string(msg) + " failed (" +
@@ -48,7 +66,7 @@ class V4L : public VideoStream {
         v4l2_requestbuffers bufReq = {};
         bufReq.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         bufReq.memory = V4L2_MEMORY_MMAP;
-        bufReq.count = 1;
+        bufReq.count = buffers_.size();
 
         call_ioctl("Request buffers", VIDIOC_REQBUFS, &bufReq);
     }
@@ -89,22 +107,25 @@ class V4L : public VideoStream {
     }
 
     void queryBuffer() {
-        requestBuffers();
+        for (size_t i = 0; i < buffers_.size(); ++i) {
+            buffers_[i].buffer = {};
+            buffers_[i].buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            buffers_[i].buffer.memory = V4L2_MEMORY_MMAP;
+            buffers_[i].buffer.index = i;
+            buffers_[i].inQueue = false;
 
-        bufferInfo_ = {};
-        bufferInfo_.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        bufferInfo_.memory = V4L2_MEMORY_MMAP;
-        bufferInfo_.index = 0;
-
-        call_ioctl("Query buffers", VIDIOC_QUERYBUF, &bufferInfo_);
+            call_ioctl("Query buffers", VIDIOC_QUERYBUF, &buffers_[i].buffer);
+        }
     }
 
     void mapBuffer() {
-        buffer_ = mmap(NULL, bufferInfo_.length, PROT_READ | PROT_WRITE,
-                       MAP_SHARED, fd_, bufferInfo_.m.offset);
-        if (buffer_ == MAP_FAILED) {
-            throw std::runtime_error(std::string("mmap of buffer failed: ") +
-                                     strerror(errno));
+        for (auto &b : buffers_) {
+            b.data = mmap(NULL, b.buffer.length, PROT_READ | PROT_WRITE,
+                          MAP_SHARED, fd_, b.buffer.m.offset);
+            if (b.data == MAP_FAILED) {
+                throw std::runtime_error(
+                    std::string("mmap of buffer failed: ") + strerror(errno));
+            }
         }
     }
 
@@ -116,15 +137,23 @@ class V4L : public VideoStream {
                 std::string("Couldn't open /dev/video0: ") + strerror(errno));
         }
 
+        buffers_.resize(NUM_BUFFERS);
+
         try {
             getCapabilities();
             setFormat(width, height, pixelFormat);
+            requestBuffers();
             queryBuffer();
             mapBuffer();
 
             call_ioctl("Activate streaming", VIDIOC_STREAMON,
-                       &bufferInfo_.type);
+                       &buffers_.front().buffer.type);
             printParams();
+
+            for (auto &b : buffers_) {
+                call_ioctl("Put buffer in queue", VIDIOC_QBUF, &b.buffer);
+                b.inQueue = true;
+            }
         } catch (std::exception const &e) {
             close(fd_);
             std::cerr << "ERROR: Could not set up video streaming: " << std::string(e.what()) << std::endl;
@@ -135,21 +164,39 @@ class V4L : public VideoStream {
     V4L(V4L const &) = delete;
     V4L &operator=(V4L const &) = delete;
     ~V4L() {
-        if (munmap(buffer_, bufferInfo_.length)) {
-            std::cerr << "ERROR: munmap failed!\n";
+        for (auto &b : buffers_) {
+            if (munmap(buffer_, b.buffer.length)) {
+                std::cerr << "ERROR: munmap failed!\n";
+            }
+
+            b.data = nullptr;
         }
-        buffer_ = nullptr;
-        call_ioctl("Deactivate streaming", VIDIOC_STREAMOFF, &bufferInfo_.type);
+        call_ioctl("Deactivate streaming", VIDIOC_STREAMOFF,
+                   &buffers_.front().buffer.type);
         close(fd_);
     }
 
     void update() override {
-        TIMER("Buffer ioctls in update");
-        call_ioctl("Put buffer in queue", VIDIOC_QBUF, &bufferInfo_);
-        call_ioctl("Wait for buffer in queue", VIDIOC_DQBUF, &bufferInfo_);
-    }
+        if (!buffers_[currFrame_].inQueue) {
+            TIMER("Put buffer in queue");
+            call_ioctl("Put buffer in queue", VIDIOC_QBUF,
+                       &buffers_[currFrame_].buffer);
+            buffers_[currFrame_].inQueue = true;
+        }
 
-    inline void *getBuffer() override { return buffer_; }
+        currFrame_ = (currFrame_ + 1 == buffers_.size()) ? 0 : currFrame_ + 1;
+        {
+            TIMER("Waiting for frame");
+            call_ioctl("Wait for buffer in queue", VIDIOC_DQBUF,
+                       &buffers_[currFrame_].buffer);
+        }
+            buffers_[currFrame_].inQueue = false;
+            buffer_ = buffers_[currFrame_].data;
+        }
 
-    inline size_t getBufferSize() const { return bufferInfo_.length; }
-};
+        inline void *getBuffer() override { return buffer_; }
+
+        inline size_t getBufferSize() const {
+            return buffers_[currFrame_].buffer.length;
+        }
+    };
