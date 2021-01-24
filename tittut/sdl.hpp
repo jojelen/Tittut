@@ -72,7 +72,7 @@ class SDLWindow {
     }
 
     void updateTexture(void *buffer) {
-            Timer timer("Updating texture");
+        TIMER("Updating texture");
         if (SDL_UpdateTexture(texture_, &rect_, buffer, rect_.w * 2)) {
             sdlError("SDL_UpdateTexture");
         }
@@ -105,7 +105,7 @@ class SDLWindow {
 
     void run() {
         while (!quit_) {
-            Timer timer("One frame");
+            TIMER("One frame");
             pollEvents();
             videoStream_->update();
             updateTexture(videoStream_->getBuffer());

@@ -2,26 +2,30 @@
 
 #include <chrono>
 #include <iostream>
-#include <string>
+#include <string_view>
 
 // Prints the time since construction at time of destruction.
 class Timer {
   public:
     Timer() : mMessage("Timer:") { mStart = std::chrono::steady_clock::now(); }
 
-    Timer(std::string &&msg) : mMessage(msg) {
+    Timer(std::string_view msg) : mMessage(msg) {
         mStart = std::chrono::steady_clock::now();
     }
+
     ~Timer() { printDuration(); }
 
     void printDuration() const {
-        auto mEnd = std::chrono::steady_clock::now();
-        std::chrono::duration<double> duration = mEnd - mStart;
+        static constexpr long int MILLION = 1e6;
+        static constexpr long int BILLION = 1e9;
+
+        auto end = std::chrono::steady_clock::now();
+        std::chrono::duration<double> duration = end - mStart;
         auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(duration)
                       .count();
-        if (ns < 1e6) {
+        if (ns < MILLION) {
             std::cout << mMessage << ": " << ns << " ns\n";
-        } else if (ns >= 1e6 && ns <= 1e9) {
+        } else if (ns >= MILLION && ns <= BILLION) {
             auto ms =
                 std::chrono::duration_cast<std::chrono::milliseconds>(duration)
                     .count();
@@ -42,5 +46,11 @@ class Timer {
 
   private:
     std::chrono::steady_clock::time_point mStart;
-    std::string mMessage;
+    std::string_view mMessage;
 };
+
+#ifdef NDEBUG
+#define TIMER(x)
+#else
+#define TIMER(x) Timer timer(x)
+#endif

@@ -123,7 +123,7 @@ class V4L : public VideoStream {
     }
 
     void update() override {
-        Timer timer("Buffer ioctls in update");
+        TIMER("Buffer ioctls in update");
         call_ioctl("Put buffer in queue", VIDIOC_QBUF, &bufferInfo_);
         call_ioctl("Wait for buffer in queue", VIDIOC_DQBUF, &bufferInfo_);
     }
