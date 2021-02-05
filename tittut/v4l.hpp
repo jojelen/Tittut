@@ -3,6 +3,7 @@
 #include "utils.hpp"
 #include "videostream.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
@@ -13,15 +14,13 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
-#include <thread>
-#include <chrono>
 
 struct Frame {
     void *data;
     v4l2_buffer buffer;
-    bool inQueue;
 };
 
 class V4L : public VideoStream {
@@ -38,7 +37,7 @@ class V4L : public VideoStream {
         int ret = -1;
         while (true) {
             ret = ioctl(fd_, req, arg);
-            if (ret < 0 && errno == EAGAIN){
+            if (ret < 0 && errno == EAGAIN) {
                 std::this_thread::sleep_for(2ms);
             } else {
                 break;
@@ -112,13 +111,12 @@ class V4L : public VideoStream {
 
         call_ioctl("Get params", VIDIOC_G_PARM, &params);
 
-
         std::cout << "Parameters:\n";
         std::cout << "capabilities: " << params.parm.capture.capability << "\n";
         std::cout << "capturemode: " << params.parm.capture.capturemode << "\n";
-        std::cout << "timerperframe: " <<
-            params.parm.capture.timeperframe.numerator << " / "  <<
-            params.parm.capture.timeperframe.denominator << "\n";
+        std::cout << "timerperframe: "
+                  << params.parm.capture.timeperframe.numerator << " / "
+                  << params.parm.capture.timeperframe.denominator << "\n";
     }
 
     void queryBuffer() {
@@ -127,7 +125,6 @@ class V4L : public VideoStream {
             buffers_[i].buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
             buffers_[i].buffer.memory = V4L2_MEMORY_MMAP;
             buffers_[i].buffer.index = i;
-            buffers_[i].inQueue = false;
 
             call_ioctl("Query buffers", VIDIOC_QUERYBUF, &buffers_[i].buffer);
         }
@@ -167,12 +164,11 @@ class V4L : public VideoStream {
 
             for (auto &b : buffers_) {
                 call_ioctl("Put buffer in queue", VIDIOC_QBUF, &b.buffer);
-                b.inQueue = true;
             }
         } catch (std::exception const &e) {
             close(fd_);
-            std::cerr << "ERROR: Could not set up video streaming: " <<
-                std::string(e.what()) << std::endl;
+            std::cerr << "ERROR: Could not set up video streaming: "
+                      << std::string(e.what()) << std::endl;
             throw e;
         }
     }
@@ -193,11 +189,10 @@ class V4L : public VideoStream {
     }
 
     void update() override {
-        if (!buffers_[currFrame_].inQueue) {
+        if (!(buffers_[currFrame_].buffer.flags & V4L2_BUF_FLAG_QUEUED)) {
             TIMER("Put buffer in queue");
             call_ioctl("Put buffer in queue", VIDIOC_QBUF,
                        &buffers_[currFrame_].buffer);
-            buffers_[currFrame_].inQueue = true;
         }
 
         currFrame_ = (currFrame_ + 1 == buffers_.size()) ? 0 : currFrame_ + 1;
@@ -206,13 +201,12 @@ class V4L : public VideoStream {
             call_ioctl("Wait for buffer in queue", VIDIOC_DQBUF,
                        &buffers_[currFrame_].buffer);
         }
-            buffers_[currFrame_].inQueue = false;
-            buffer_ = buffers_[currFrame_].data;
-        }
+        buffer_ = buffers_[currFrame_].data;
+    }
 
-        inline void *getBuffer() override { return buffer_; }
+    inline void *getBuffer() override { return buffer_; }
 
-        inline size_t getBufferSize() const {
-            return buffers_[currFrame_].buffer.length;
-        }
-    };
+    inline size_t getBufferSize() const {
+        return buffers_[currFrame_].buffer.length;
+    }
+};
