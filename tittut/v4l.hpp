@@ -22,7 +22,11 @@ class V4L : public VideoStream {
 
     void call_ioctl(std::string_view msg, unsigned long int req,
                     const void *arg) const {
-        int ret = ioctl(fd_, req, arg);
+        int ret = -1;
+        do {
+            ret = ioctl(fd_, req, arg);
+        } while (ret < 0 && errno == EAGAIN);
+
         if (ret < 0) {
             throw std::runtime_error(std::string(msg) + " failed (" +
                                      std::to_string(ret) +
@@ -69,6 +73,21 @@ class V4L : public VideoStream {
                 "Use \"v4l2-ctl --list-formats-ext\" to see available formats");
     }
 
+    void printParams() const {
+        v4l2_streamparm params = {};
+        params.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+        call_ioctl("Get params", VIDIOC_G_PARM, &params);
+
+
+        std::cout << "Parameters:\n";
+        std::cout << "capabilities: " << params.parm.capture.capability << "\n";
+        std::cout << "capturemode: " << params.parm.capture.capturemode << "\n";
+        std::cout << "timerperframe: " <<
+            params.parm.capture.timeperframe.numerator << " / "  <<
+            params.parm.capture.timeperframe.denominator << "\n";
+    }
+
     void queryBuffer() {
         requestBuffers();
 
@@ -91,7 +110,7 @@ class V4L : public VideoStream {
 
   public:
     V4L(int width, int height, int pixelFormat) : fd_(-1) {
-        fd_ = open("/dev/video0", O_RDWR);
+        fd_ = open("/dev/video0", O_RDWR | O_NONBLOCK);
         if (fd_ < 0) {
             throw std::runtime_error(
                 std::string("Couldn't open /dev/video0: ") + strerror(errno));
@@ -105,8 +124,10 @@ class V4L : public VideoStream {
 
             call_ioctl("Activate streaming", VIDIOC_STREAMON,
                        &bufferInfo_.type);
+            printParams();
         } catch (std::exception const &e) {
             close(fd_);
+            std::cerr << "ERROR: Could not set up video streaming: " << std::string(e.what()) << std::endl;
             throw e;
         }
     }
