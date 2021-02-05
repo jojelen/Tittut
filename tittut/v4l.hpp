@@ -69,6 +69,21 @@ class V4L : public VideoStream {
         bufReq.count = buffers_.size();
 
         call_ioctl("Request buffers", VIDIOC_REQBUFS, &bufReq);
+
+        // This does not seem to be supported in my version...
+        // uint32_t caps = static_cast<uint32_t>(bufReq.capabilities);
+        // bool capMmap = V4L2_BUF_CAP_SUPPORTS_MMAP & caps;
+        // bool capDma = V4L2_BUF_CAP_SUPPORTS_DMABUF & caps;
+        // bool capUser = V4L2_BUF_CAP_SUPPORTS_USERPTR & caps;
+        // bool capReq = V4L2_BUF_CAP_SUPPORTS_REQUESTS & caps;
+        // bool capOrph =V4L2_BUF_CAP_SUPPORTS_ORPHANED_BUFS  & caps;
+
+        // std::cout << "Buffer capabilities:\n";
+        // std::cout << "V4L2_BUF_CAP_SUPPORTS_MMAP: " << capMmap;
+        // std::cout << "V4L2_BUF_CAP_SUPPORTS_DMABUF: " << capDma;
+        // std::cout << "V4L2_BUF_CAP_SUPPORTS_USERPTR: " << capUser;
+        // std::cout << "V4L2_BUF_CAP_SUPPORTS_REQUESTS: " << capReq;
+        // std::cout << "V4L2_BUF_CAP_SUPPORTS_ORPHANED: " << capOrph;
     }
 
     void setFormat(int width, int height, int pixelFormat) const {
@@ -156,7 +171,8 @@ class V4L : public VideoStream {
             }
         } catch (std::exception const &e) {
             close(fd_);
-            std::cerr << "ERROR: Could not set up video streaming: " << std::string(e.what()) << std::endl;
+            std::cerr << "ERROR: Could not set up video streaming: " <<
+                std::string(e.what()) << std::endl;
             throw e;
         }
     }
