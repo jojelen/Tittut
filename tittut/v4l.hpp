@@ -25,6 +25,7 @@ struct Frame {
 
 class V4L : public VideoStream {
   private:
+    static constexpr int STREAM_TYPE_ = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     int fd_ = -1;
     std::vector<Frame> buffers_;
     size_t currFrame_ = 0;
@@ -46,7 +47,7 @@ class V4L : public VideoStream {
 
         if (ret < 0) {
             throw std::runtime_error(std::string(msg) + " failed (" +
-                                     std::to_string(ret) +
+                                     std::to_string(errno) +
                                      "): " + strerror(errno));
         }
     }
@@ -61,11 +62,11 @@ class V4L : public VideoStream {
         }
     }
 
-    void requestBuffers() const {
+    void requestBuffers(int count) const {
         v4l2_requestbuffers bufReq = {};
-        bufReq.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        bufReq.type = STREAM_TYPE_;
         bufReq.memory = V4L2_MEMORY_MMAP;
-        bufReq.count = buffers_.size();
+        bufReq.count = count;
 
         call_ioctl("Request buffers", VIDIOC_REQBUFS, &bufReq);
 
@@ -91,7 +92,7 @@ class V4L : public VideoStream {
                 std::string("Invalid format dimensions: ") +
                 "Use \"v4l2-ctl --list-formats-ext\" to see available formats");
         v4l2_format format = {};
-        format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        format.type = STREAM_TYPE_;
         format.fmt.pix.pixelformat = pixelFormat;
         format.fmt.pix.width = width;
         format.fmt.pix.height = height;
@@ -107,7 +108,7 @@ class V4L : public VideoStream {
 
     void printParams() const {
         v4l2_streamparm params = {};
-        params.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        params.type = STREAM_TYPE_;
 
         call_ioctl("Get params", VIDIOC_G_PARM, &params);
 
@@ -122,7 +123,7 @@ class V4L : public VideoStream {
     void queryBuffer() {
         for (size_t i = 0; i < buffers_.size(); ++i) {
             buffers_[i].buffer = {};
-            buffers_[i].buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            buffers_[i].buffer.type = STREAM_TYPE_;
             buffers_[i].buffer.memory = V4L2_MEMORY_MMAP;
             buffers_[i].buffer.index = i;
 
@@ -154,22 +155,19 @@ class V4L : public VideoStream {
         try {
             getCapabilities();
             setFormat(width, height, pixelFormat);
-            requestBuffers();
+            requestBuffers(static_cast<int>(buffers_.size()));
             queryBuffer();
             mapBuffer();
-
-            call_ioctl("Activate streaming", VIDIOC_STREAMON,
-                       &buffers_.front().buffer.type);
-            printParams();
-
             for (auto &b : buffers_) {
                 call_ioctl("Put buffer in queue", VIDIOC_QBUF, &b.buffer);
             }
+            call_ioctl("Activate streaming", VIDIOC_STREAMON, &STREAM_TYPE_);
+            printParams();
+
         } catch (std::exception const &e) {
             close(fd_);
-            std::cerr << "ERROR: Could not set up video streaming: "
-                      << std::string(e.what()) << std::endl;
-            throw e;
+            throw std::runtime_error(std::string("ERROR: Could not set up video streaming: ") +
+                      std::string(e.what()));
         }
     }
 
@@ -177,15 +175,24 @@ class V4L : public VideoStream {
     V4L &operator=(V4L const &) = delete;
     ~V4L() {
         for (auto &b : buffers_) {
-            if (munmap(buffer_, b.buffer.length)) {
+            if (b.buffer.flags & V4L2_BUF_FLAG_QUEUED) {
+                call_ioctl("Wait for buffer in queue", VIDIOC_DQBUF,
+                       &b.buffer);
+
+            }
+            if (munmap(b.data, b.buffer.length)) {
                 std::cerr << "ERROR: munmap failed!\n";
             }
 
             b.data = nullptr;
         }
-        call_ioctl("Deactivate streaming", VIDIOC_STREAMOFF,
-                   &buffers_.front().buffer.type);
-        close(fd_);
+
+        call_ioctl("Deactivate streaming", VIDIOC_STREAMOFF, &STREAM_TYPE_);
+        requestBuffers(0);
+
+        if (close(fd_)) {
+            std::cerr << "[ERROR]: Failed to close video fd\n";
+        }
     }
 
     void update() override {

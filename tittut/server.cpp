@@ -22,6 +22,31 @@ class VideoServer {
     int port_ = -1;
     struct sockaddr_in localAddress_ = {};
 
+    void readIncomingPackages(int socket) {
+        PKG_TYPE type = PKG_TYPE::INVALID;
+        uint64_t dataSize = 0;
+        std::tie(type, dataSize) = readPackageHeader(socket, MSG_DONTWAIT);
+        switch (type) {
+        case PKG_TYPE::TEXT: {
+            Package pkg = {.type = PKG_TYPE::TEXT, .data = {}};
+            readPackageData(socket, pkg, dataSize);
+            readPackage(pkg);
+            break;
+        }
+        case PKG_TYPE::CLOSED: {
+            throw std::runtime_error("Client closed the connection");
+        }
+        case PKG_TYPE::INVALID: {
+            return;
+        }
+        default: {
+            std::cerr << "WARNING: Throwing away non-frame message: type: "
+                      << typeToString(type) << "\n";
+            break;
+        }
+        }
+    }
+
     void connectionWork(int socket) {
         try {
             sendMsg(socket, "Connection established");
@@ -37,12 +62,10 @@ class VideoServer {
             std::cout << "Got height = " << height << std::endl;
             V4L v4l(width, height, V4L2_PIX_FMT_YUYV);
 
-            void *buffer = v4l.getBuffer();
-            size_t bufferSize = v4l.getBufferSize();
-
             while (true) {
                 v4l.update();
-                sendBuffer(socket, buffer, bufferSize);
+                sendBuffer(socket, v4l.getBuffer(), v4l.getBufferSize());
+                readIncomingPackages(socket);
             }
 
             std::cout << "Finished sending bytes!\n";

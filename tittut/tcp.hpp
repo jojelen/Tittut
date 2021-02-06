@@ -27,6 +27,25 @@ enum class PKG_TYPE {
     NUM_TYPES = 4
 };
 
+std::string_view typeToString(PKG_TYPE type) {
+    switch (type) {
+    case PKG_TYPE::INVALID:
+        return "INVALID";
+    case PKG_TYPE::CLOSED:
+        return "CLOSED";
+    case PKG_TYPE::STREAM_CONFIG:
+        return "STREAM_CONFIG";
+    case PKG_TYPE::FRAME:
+        return "FRAME";
+    case PKG_TYPE::TEXT:
+        return "TEXT";
+    case PKG_TYPE::NUM_TYPES:
+        return "NUM_TYPES";
+    default:
+        throw std::invalid_argument("Got invalid PKG_TYPE");
+    }
+}
+
 struct StreamConfig {
     uint64_t width;
     uint64_t height;
@@ -44,18 +63,22 @@ struct Package {
 };
 
 // Read out the next package's type and data size.
-std::tuple<PKG_TYPE, uint64_t> readPackageHeader(int socket) {
+std::tuple<PKG_TYPE, uint64_t> readPackageHeader(int socket, int flags = MSG_WAITALL) {
     std::vector<uint8_t> header(HEADER_SIZE);
     int bytes = recv(socket, static_cast<void *>(header.data()), HEADER_SIZE,
-                     MSG_WAITALL);
+                     flags);
     if (bytes == 0) {
         std::cout << "Connection closed\n";
         return std::tuple{PKG_TYPE::CLOSED, 0};
-    } else if (bytes < 0) {
+    } else if (bytes < 0 && errno == EAGAIN && (flags & MSG_DONTWAIT)) {
+        // TODO this is not right.
+        return {PKG_TYPE::INVALID, 0};
+    }
+    else if (bytes < 0) {
         throw std::runtime_error(
             std::string(
-                "Failed reading reading out package header from socket: ") +
-            strerror(errno));
+                "Failed reading out package header from socket: ") +
+            strerror(errno) + " (" + std::to_string(errno) + ")");
     }
 
     uint64_t dataSize = 0;
@@ -68,8 +91,8 @@ std::tuple<PKG_TYPE, uint64_t> readPackageHeader(int socket) {
     PKG_TYPE type = (pkgType >= MAX_TYPES) ? PKG_TYPE::INVALID
                                            : static_cast<PKG_TYPE>(pkgType);
 
-    std::cout << "Recieved type " << static_cast<size_t>(pkgType)
-              << " message of " << dataSize << " bytes\n";
+    std::cout << "Recieved " << typeToString(type) << " type message of "
+              << dataSize << " bytes\n";
 
     return std::tuple{type, dataSize};
 }
@@ -89,7 +112,7 @@ void readPackageData(int socket, Package &pkg, uint64_t size) {
 
     // DEBUG
     std::cout << "Read " << bytes << " of " << size << " bytes of type "
-              << static_cast<int>(pkg.type) << " message\n";
+              << typeToString(pkg.type) << " message\n";
 }
 
 void getPackage(int socket, Package &pkg) {
@@ -151,7 +174,7 @@ void sendBuffer(int socket, const void *buffer, size_t bufferSize) {
     assert(header.size() == HEADER_SIZE);
 
     int bytes = send(socket, static_cast<const void *>(header.data()),
-                     HEADER_SIZE, MSG_NOSIGNAL);
+                     HEADER_SIZE, MSG_WAITALL | MSG_NOSIGNAL);
     if (bytes < 0) {
         throw std::runtime_error("Could not send header of package");
     }
@@ -228,7 +251,9 @@ class TcpVideoStream : public VideoStream {
         frame_.data.resize(width * height * 2);
     }
 
-    ~TcpVideoStream() { close(socket_); }
+    ~TcpVideoStream() {
+        sendMsg(socket_, "Client is closing down");
+        close(socket_); }
 
     inline void *getBuffer() override {
         return static_cast<void *>(frame_.data.data());
@@ -236,24 +261,35 @@ class TcpVideoStream : public VideoStream {
 
     void update() override {
         PKG_TYPE type = PKG_TYPE::INVALID;
-        uint64_t dataSize = 0; 
+        uint64_t dataSize = 0;
         do {
             std::tie(type, dataSize) = readPackageHeader(socket_);
-            if (type == PKG_TYPE::TEXT) {
-                Package pkg = { .type = PKG_TYPE::TEXT, .data = {}};
+            switch (type) {
+            case PKG_TYPE::TEXT: {
+                Package pkg = {.type = PKG_TYPE::TEXT, .data = {}};
                 readPackageData(socket_, pkg, dataSize);
                 readPackage(pkg);
+                break;
             }
-            else if (type != PKG_TYPE::FRAME) {
-                std::cerr << "WARNING: Throwing away non-frame message\n";
+            case PKG_TYPE::CLOSED: {
+                throw std::runtime_error("Server closed the connection");
+            }
+            case PKG_TYPE::FRAME: {
+                  break;
+              }
+            default: {
+                std::cerr << "WARNING: Throwing away non-frame message: type: "
+                          << typeToString(type) << "\n";
+                break;
+            }
             }
         } while (type != PKG_TYPE::FRAME);
 
-        if (dataSize != frame_.data.size()){
+        if (dataSize != frame_.data.size()) {
             std::cerr << "WARNING: Frame changed size\n";
         }
-        
-        readPackageData(socket_, frame_, dataSize); 
+
+        readPackageData(socket_, frame_, dataSize);
     }
 };
 
