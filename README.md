@@ -1,12 +1,36 @@
 # Tittut
 
-A minimalistic video streamer that is using Video4Linux2 for retrieving frames
-and SDL2 to display them. The client program can also connect to a server over
-TCP/IP, i.e. remote streaming.
+Tittut is a video streamer that features remote streaming over TCP/IP. It is
+pretty low-level and minimalistic; essentially, the only dependencies are:
+- Video4Linux2: for fetching video frames.
+- SDL2: for displaying the frames.
 
-## Docker
+## Build and Run
 
-Build docker image with
+Tittut uses meson to build:
+```
+meson build
+cd build && ninja
+```
+
+### Run
+
+Run server with
+```
+./tittut/server
+```
+Connect to server with
+```
+./tittut/client -i <ip> -t
+```
+Or run without any server, i.e. locally
+```
+./tittut/client
+```
+
+### Docker
+
+Not needed, but if one wants to one can run in docker. Build docker image with
 ```
 docker build -t tittut .
 ```

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "v4l.hpp"
+#include "video-stream.hpp"
 #include "utils.hpp"
 
 #include <SDL2/SDL.h>

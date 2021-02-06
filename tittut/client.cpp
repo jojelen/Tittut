@@ -2,8 +2,8 @@
 // and SDL2 for viewing it in a window.
 #include "argparser.hpp"
 #include "sdl.hpp"
-#include "tcp.hpp"
-#include "v4l.hpp"
+#include "tcp-stream.hpp"
+#include "v4l-stream.hpp"
 
 #include <iostream>
 
@@ -11,7 +11,7 @@ using namespace std;
 
 int main(int argc, const char *argv[]) {
     try {
-        ArgParser parser("Tittut");
+        ArgParser parser("Tittut client");
         parser.description("Streaming application using Video4Linux and SDL2.");
         parser.addArg("width").optional("-x").defaultValue(320);
         parser.addArg("height").optional("-y").defaultValue(180);
@@ -30,17 +30,21 @@ int main(int argc, const char *argv[]) {
 
         int width = parser.get<int>("width");
         int height = parser.get<int>("height");
-
+        unique_ptr<VideoStream> stream;
+        string windowName;
         if (parser.get<bool>("tcp")) {
             std::string ip = parser.get<std::string>("ip");
             int port = parser.get<int>("port");
-            connectToServer(ip, port, width, height);
+            stream = std::make_unique<TcpStream>(ip, port, width, height);
+
+            windowName = "Video stream from " + ip + ":" + to_string(port);
         } else {
-            unique_ptr<VideoStream> stream =
-                make_unique<V4L>(width, height, V4L2_PIX_FMT_YUYV);
-            SDLWindow win("SDL window", width, height, stream);
-            win.run();
+            stream = make_unique<V4LStream>(width, height, V4L2_PIX_FMT_YUYV);
+            windowName = "Local video stream";
         }
+
+        SDLWindow win(windowName, width, height, stream);
+        win.run();
     } catch (exception &e) {
         cout << "ERROR: " << e.what() << endl;
     }

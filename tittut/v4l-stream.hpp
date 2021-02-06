@@ -1,7 +1,7 @@
 #pragma once
 
 #include "utils.hpp"
-#include "videostream.hpp"
+#include "video-stream.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -23,7 +23,7 @@ struct Frame {
     v4l2_buffer buffer;
 };
 
-class V4L : public VideoStream {
+class V4LStream : public VideoStream {
   private:
     static constexpr int STREAM_TYPE_ = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     int fd_ = -1;
@@ -143,7 +143,7 @@ class V4L : public VideoStream {
     }
 
   public:
-    V4L(int width, int height, int pixelFormat) : fd_(-1) {
+    V4LStream(int width, int height, int pixelFormat) : fd_(-1) {
         fd_ = open("/dev/video0", O_RDWR | O_NONBLOCK);
         if (fd_ < 0) {
             throw std::runtime_error(
@@ -171,9 +171,9 @@ class V4L : public VideoStream {
         }
     }
 
-    V4L(V4L const &) = delete;
-    V4L &operator=(V4L const &) = delete;
-    ~V4L() {
+    V4LStream(V4LStream const &) = delete;
+    V4LStream &operator=(V4LStream const &) = delete;
+    ~V4LStream() {
         for (auto &b : buffers_) {
             if (b.buffer.flags & V4L2_BUF_FLAG_QUEUED) {
                 call_ioctl("Wait for buffer in queue", VIDIOC_DQBUF,

@@ -102,14 +102,7 @@ class ArgParser {
         if (!optionalArgs_.empty()) {
             std::cout << "\nOptional arguments:\n";
             for (auto &arg : optionalArgs_) {
-                std::cout << *arg;
-
-                // std::cout << "\t" << arg->optionalName_.value() << "\t" <<
-                // arg->name_ <<
-                //    "(" << arg->value_ << ")";
-                // if (arg->desc_.has_value())
-                //    std::cout << "\t" << arg->desc_.value();
-                std::cout << std::endl;
+                std::cout << *arg << std::endl;
             }
         }
 
