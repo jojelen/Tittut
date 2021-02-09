@@ -1,7 +1,7 @@
 #pragma once
 
-#include "video-stream.hpp"
 #include "utils.hpp"
+#include "video-stream.hpp"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
@@ -40,11 +40,31 @@ class SDLWindow {
     SDL_Rect rect_ = {};
     bool quit_ = false;
     std::unique_ptr<VideoStream> videoStream_;
+    int rowPitch_ = 0;
+    bool flip_;
+
+    void flipBuffer(uint8_t *srcBuffer, uint8_t *dstBuffer) {
+        for (int y = 0; y < rect_.h; ++y) {
+            for (int x = 0; x < rect_.w; x += 2) {
+                uint8_t *srcY1 = srcBuffer + x * 2 + rowPitch_ * y;
+                uint8_t *srcY2 = srcBuffer + (x + 1) * 2 + rowPitch_ * y;
+                uint8_t *dstY1 = dstBuffer + (rect_.w - 1 - x) * 2 +
+                                 rowPitch_ * (rect_.h - 1 - y);
+                uint8_t *dstY2 = dstBuffer + (rect_.w - 1 - (x + 1)) * 2 +
+                                 rowPitch_ * (rect_.h - 1 - y);
+
+                *dstY1 = *srcY1;
+                *dstY2 = *srcY2;
+                *(dstY1 + 1) = *(srcY2 + 1);
+                *(dstY2 + 1) = *(srcY1 + 1);
+            }
+        }
+    }
 
   public:
     SDLWindow(const std::string &name, int width, int height,
-              std::unique_ptr<VideoStream> &stream)
-        : name_(name), videoStream_(std::move(stream)) {
+              std::unique_ptr<VideoStream> &stream, bool flip = false)
+        : name_(name), videoStream_(std::move(stream)), flip_(flip) {
         initSDL();
 
         win_.reset(SDL_CreateWindow(name_.c_str(), 100, 100, width, height,
@@ -69,11 +89,12 @@ class SDLWindow {
 
         rect_.w = width;
         rect_.h = height;
+        rowPitch_ = rect_.w * 2;
     }
 
     void updateTexture(void *buffer) {
         TIMER("Updating texture");
-        if (SDL_UpdateTexture(texture_, &rect_, buffer, rect_.w * 2)) {
+        if (SDL_UpdateTexture(texture_, &rect_, buffer, rowPitch_)) {
             sdlError("SDL_UpdateTexture");
         }
     }
@@ -104,11 +125,18 @@ class SDLWindow {
     }
 
     void run() {
+        std::vector<uint8_t> flippedBuffer;
         while (!quit_) {
             TIMER("One frame");
             pollEvents();
             videoStream_->update();
-            updateTexture(videoStream_->getBuffer());
+            uint8_t *buffer = static_cast<uint8_t *>(videoStream_->getBuffer());
+            if (flip_) {
+                flippedBuffer.resize(videoStream_->getBufferSize());
+                flipBuffer(buffer, flippedBuffer.data());
+                buffer = flippedBuffer.data();
+            }
+            updateTexture(static_cast<void *>(buffer));
             render();
         }
     }

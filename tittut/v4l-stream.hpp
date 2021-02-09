@@ -213,7 +213,7 @@ class V4LStream : public VideoStream {
 
     inline void *getBuffer() override { return buffer_; }
 
-    inline size_t getBufferSize() const {
+    inline size_t getBufferSize() const override {
         return buffers_[currFrame_].buffer.length;
     }
 };

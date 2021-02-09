@@ -7,6 +7,8 @@
 
 #include <iostream>
 
+#define PIX_FMT V4L2_PIX_FMT_YUYV
+
 using namespace std;
 
 int main(int argc, const char *argv[]) {
@@ -25,6 +27,8 @@ int main(int argc, const char *argv[]) {
             "Enable verbose printing.");
         parser.addArg("tcp").optional("-t").defaultValue(false).description(
             "Connect to video stream over tcp.");
+        parser.addArg("flip").optional("-f").defaultValue(false).description(
+            "Flips the video 180 degrees.");
 
         parser.parse(argc, argv);
 
@@ -39,11 +43,12 @@ int main(int argc, const char *argv[]) {
 
             windowName = "Video stream from " + ip + ":" + to_string(port);
         } else {
-            stream = make_unique<V4LStream>(width, height, V4L2_PIX_FMT_YUYV);
+            stream = make_unique<V4LStream>(width, height, PIX_FMT);
             windowName = "Local video stream";
         }
 
-        SDLWindow win(windowName, width, height, stream);
+        SDLWindow win(windowName, width, height, stream,
+                      parser.get<bool>("flip"));
         win.run();
     } catch (exception &e) {
         cout << "ERROR: " << e.what() << endl;

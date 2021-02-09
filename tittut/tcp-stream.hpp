@@ -51,6 +51,10 @@ class TcpStream : public VideoStream, public TcpInterface {
         return static_cast<void *>(frame_.data.data());
     }
 
+    inline size_t getBufferSize() const override {
+        return 0;
+    }
+
     void update() override {
         // Handle recieved packages until we get a FRAME.
         while (true) {

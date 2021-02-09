@@ -9,5 +9,6 @@ class VideoStream {
         virtual ~VideoStream() {}
 
         virtual void* getBuffer() = 0;
+        virtual size_t getBufferSize() const = 0;
         virtual void update() = 0;
 };
