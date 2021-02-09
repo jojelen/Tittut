@@ -44,6 +44,7 @@ class SDLWindow {
     bool flip_;
 
     void flipBuffer(uint8_t *srcBuffer, uint8_t *dstBuffer) {
+        TIMER("Flipping image");
         for (int y = 0; y < rect_.h; ++y) {
             for (int x = 0; x < rect_.w; x += 2) {
                 uint8_t *srcY1 = srcBuffer + x * 2 + rowPitch_ * y;

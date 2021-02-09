@@ -52,7 +52,7 @@ class TcpStream : public VideoStream, public TcpInterface {
     }
 
     inline size_t getBufferSize() const override {
-        return 0;
+        return frame_.data.size();
     }
 
     void update() override {
