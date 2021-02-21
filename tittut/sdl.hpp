@@ -22,6 +22,7 @@ void initSDL() {
         if (SDL_Init(SDL_INIT_VIDEO)) {
             sdlError("SDL_Init");
         }
+        IMG_Init(IMG_INIT_JPG);
         std::atexit(SDL_Quit);
         initialized = true;
     }
@@ -42,6 +43,7 @@ class SDLWindow {
     std::unique_ptr<VideoStream> videoStream_;
     int rowPitch_ = 0;
     bool flip_;
+    bool mjpeg_;
 
     void flipBuffer(uint8_t *srcBuffer, uint8_t *dstBuffer) {
         TIMER("Flipping image");
@@ -64,8 +66,10 @@ class SDLWindow {
 
   public:
     SDLWindow(const std::string &name, int width, int height,
-              std::unique_ptr<VideoStream> &stream, bool flip = false)
-        : name_(name), videoStream_(std::move(stream)), flip_(flip) {
+              std::unique_ptr<VideoStream> &stream, bool mjpeg,
+              bool flip = false)
+        : name_(name), videoStream_(std::move(stream)), mjpeg_(mjpeg),
+          flip_(flip) {
         initSDL();
 
         win_.reset(SDL_CreateWindow(name_.c_str(), 100, 100, width, height,
@@ -81,9 +85,13 @@ class SDLWindow {
             sdlError("SDL_CreateRenderer");
         }
 
-        texture_ =
-            SDL_CreateTexture(ren_, SDL_PIXELFORMAT_YUY2,
-                              SDL_TEXTUREACCESS_STREAMING, width, height);
+        int pixelFormat = SDL_PIXELFORMAT_YUY2;
+        if (mjpeg) {
+            std::cout << "Setting RGB24 for texture\n";
+            pixelFormat = SDL_PIXELFORMAT_RGB24;
+        }
+        texture_ = SDL_CreateTexture(
+            ren_, pixelFormat, SDL_TEXTUREACCESS_STREAMING, width, height);
         if (texture_ == nullptr) {
             sdlError("SDL_CreateTexture");
         }
@@ -125,20 +133,50 @@ class SDLWindow {
         }
     }
 
+    void jpegTemp(void *data, int size) {
+        // Create a stream based on our buffer.
+        SDL_RWops *buffer_stream = SDL_RWFromMem(data, size);
+        if (!buffer_stream) {
+            sdlError("SDL_RWFromMem");
+        }
+
+        // Create a surface using the data coming out of the above stream.
+        SDL_Surface *frame = IMG_Load_RW(buffer_stream, 0);
+        if (!frame) {
+            sdlError("IMG_LOAD_RW");
+        }
+        if (SDL_UpdateTexture(texture_, NULL, frame->pixels, frame->pitch)) {
+            sdlError("UpdateTexture");
+        }
+        if (SDL_RenderClear(ren_))
+            sdlError("SDL_RenderClear");
+        if (SDL_RenderCopy(ren_, texture_, NULL, NULL))
+            sdlError("SDL_RenderCopy");
+        SDL_RenderPresent(ren_);
+    }
+
     void run() {
         std::vector<uint8_t> flippedBuffer;
+        videoStream_->update();
+        videoStream_->update();
         while (!quit_) {
             TIMER("One frame");
+
             pollEvents();
             videoStream_->update();
             uint8_t *buffer = static_cast<uint8_t *>(videoStream_->getBuffer());
+            int bufferSize = static_cast<int>(videoStream_->getBufferSize());
             if (flip_) {
-                flippedBuffer.resize(videoStream_->getBufferSize());
+                flippedBuffer.resize(bufferSize);
                 flipBuffer(buffer, flippedBuffer.data());
                 buffer = flippedBuffer.data();
             }
-            updateTexture(static_cast<void *>(buffer));
-            render();
+            if (mjpeg_) {
+                jpegTemp(buffer, bufferSize);
+            } else {
+                updateTexture(static_cast<void *>(buffer));
+                render();
+            }
         }
     }
 };

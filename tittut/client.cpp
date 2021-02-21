@@ -7,8 +7,6 @@
 
 #include <iostream>
 
-#define PIX_FMT V4L2_PIX_FMT_YUYV
-
 using namespace std;
 
 int main(int argc, const char *argv[]) {
@@ -29,8 +27,16 @@ int main(int argc, const char *argv[]) {
             "Connect to video stream over tcp.");
         parser.addArg("flip").optional("-f").defaultValue(false).description(
             "Flips the video 180 degrees.");
+        parser.addArg("mjpeg").optional("-m").defaultValue(false).description(
+            "Stream in MJPEG format");
 
         parser.parse(argc, argv);
+
+        int PIX_FMT = V4L2_PIX_FMT_YUYV;
+
+        if (parser.get<bool>("mjpeg")) {
+            PIX_FMT = V4L2_PIX_FMT_MJPEG;
+        }
 
         int width = parser.get<int>("width");
         int height = parser.get<int>("height");
@@ -48,7 +54,7 @@ int main(int argc, const char *argv[]) {
         }
 
         SDLWindow win(windowName, width, height, stream,
-                      parser.get<bool>("flip"));
+                      parser.get<bool>("mjpeg"), parser.get<bool>("flip"));
         win.run();
     } catch (exception &e) {
         cout << "ERROR: " << e.what() << endl;
