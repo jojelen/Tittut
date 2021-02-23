@@ -10,10 +10,10 @@ class TcpStream : public VideoStream, public TcpInterface {
     int socket_ = -1;
     Package frame_ = {};
 
-    void setupStream(int width, int height) const {
+    void setupStream() const {
         std::cout << "Setting up stream\n";
-        StreamConfig cfg = {.width = static_cast<uint64_t>(width),
-                            .height = static_cast<uint64_t>(height)};
+        StreamConfig cfg = {.width = static_cast<uint64_t>(width_),
+                            .height = static_cast<uint64_t>(height_)};
 
         sendStreamConfig(socket_, cfg);
     }
@@ -33,10 +33,12 @@ class TcpStream : public VideoStream, public TcpInterface {
     }
 
   public:
-    TcpStream(const std::string &ip, int port, int width, int height) {
+    TcpStream(const std::string &ip, int port, int width, int height,
+              int format)
+        : VideoStream(width, height, format) {
         socket_ = connectTo(ip, port);
 
-        setupStream(width, height);
+        setupStream();
 
         frame_.type = PKG_TYPE::FRAME;
         frame_.data.resize(width * height * 2); // YUYV format.
@@ -51,9 +53,7 @@ class TcpStream : public VideoStream, public TcpInterface {
         return static_cast<void *>(frame_.data.data());
     }
 
-    inline size_t getBufferSize() const override {
-        return frame_.data.size();
-    }
+    inline size_t getBufferSize() const override { return frame_.data.size(); }
 
     void update() override {
         // Handle recieved packages until we get a FRAME.

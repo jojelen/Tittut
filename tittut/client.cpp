@@ -28,33 +28,30 @@ int main(int argc, const char *argv[]) {
         parser.addArg("flip").optional("-f").defaultValue(false).description(
             "Flips the video 180 degrees.");
         parser.addArg("mjpeg").optional("-m").defaultValue(false).description(
-            "Stream in MJPEG format");
+            "Stream in MJPEG format.");
 
         parser.parse(argc, argv);
 
-        int PIX_FMT = V4L2_PIX_FMT_YUYV;
-
-        if (parser.get<bool>("mjpeg")) {
-            PIX_FMT = V4L2_PIX_FMT_MJPEG;
-        }
-
+        int format =
+            parser.get<bool>("mjpeg") ? V4L2_PIX_FMT_MJPEG : V4L2_PIX_FMT_YUYV;
         int width = parser.get<int>("width");
         int height = parser.get<int>("height");
+
         unique_ptr<VideoStream> stream;
         string windowName;
         if (parser.get<bool>("tcp")) {
             std::string ip = parser.get<std::string>("ip");
             int port = parser.get<int>("port");
-            stream = std::make_unique<TcpStream>(ip, port, width, height);
+            stream =
+                std::make_unique<TcpStream>(ip, port, width, height, format);
 
             windowName = "Video stream from " + ip + ":" + to_string(port);
         } else {
-            stream = make_unique<V4LStream>(width, height, PIX_FMT);
+            stream = make_unique<V4LStream>(width, height, format);
             windowName = "Local video stream";
         }
 
-        SDLWindow win(windowName, width, height, stream,
-                      parser.get<bool>("mjpeg"), parser.get<bool>("flip"));
+        SDLWindow win(windowName, stream, parser.get<bool>("flip"));
         win.run();
     } catch (exception &e) {
         cout << "ERROR: " << e.what() << endl;

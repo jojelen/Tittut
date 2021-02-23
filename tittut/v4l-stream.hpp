@@ -86,21 +86,21 @@ class V4LStream : public VideoStream {
         // std::cout << "V4L2_BUF_CAP_SUPPORTS_ORPHANED: " << capOrph;
     }
 
-    void setFormat(int width, int height, int pixelFormat) const {
-        if (width <= 0 || height <= 0)
+    void setFormat() const {
+        if (width_ <= 0 || height_ <= 0)
             throw std::invalid_argument(
                 std::string("Invalid format dimensions: ") +
                 "Use \"v4l2-ctl --list-formats-ext\" to see available formats");
         v4l2_format format = {};
         format.type = STREAM_TYPE_;
-        format.fmt.pix.pixelformat = pixelFormat;
-        format.fmt.pix.width = width;
-        format.fmt.pix.height = height;
+        format.fmt.pix.pixelformat = format_;
+        format.fmt.pix.width = width_;
+        format.fmt.pix.height = height_;
 
         call_ioctl("Set format", VIDIOC_S_FMT, &format);
 
-        if (format.fmt.pix.width != static_cast<unsigned int>(width) ||
-            format.fmt.pix.height != static_cast<unsigned int>(height))
+        if (format.fmt.pix.width != static_cast<unsigned int>(width_) ||
+            format.fmt.pix.height != static_cast<unsigned int>(height_))
             throw std::invalid_argument(
                 std::string("Invalid format dimensions: ") +
                 "Use \"v4l2-ctl --list-formats-ext\" to see available formats");
@@ -143,7 +143,8 @@ class V4LStream : public VideoStream {
     }
 
   public:
-    V4LStream(int width, int height, int pixelFormat) : fd_(-1) {
+    V4LStream(int width, int height, int format)
+        : VideoStream(width, height, format), fd_(-1) {
         fd_ = open("/dev/video0", O_RDWR | O_NONBLOCK);
         if (fd_ < 0) {
             throw std::runtime_error(
@@ -154,7 +155,7 @@ class V4LStream : public VideoStream {
 
         try {
             getCapabilities();
-            setFormat(width, height, pixelFormat);
+            setFormat();
             requestBuffers(static_cast<int>(buffers_.size()));
             queryBuffer();
             mapBuffer();
@@ -166,8 +167,9 @@ class V4LStream : public VideoStream {
 
         } catch (std::exception const &e) {
             close(fd_);
-            throw std::runtime_error(std::string("ERROR: Could not set up video streaming: ") +
-                      std::string(e.what()));
+            throw std::runtime_error(
+                std::string("ERROR: Could not set up video streaming: ") +
+                std::string(e.what()));
         }
     }
 
@@ -176,9 +178,7 @@ class V4LStream : public VideoStream {
     ~V4LStream() {
         for (auto &b : buffers_) {
             if (b.buffer.flags & V4L2_BUF_FLAG_QUEUED) {
-                call_ioctl("Wait for buffer in queue", VIDIOC_DQBUF,
-                       &b.buffer);
-
+                call_ioctl("Wait for buffer in queue", VIDIOC_DQBUF, &b.buffer);
             }
             if (munmap(b.data, b.buffer.length)) {
                 std::cerr << "ERROR: munmap failed!\n";

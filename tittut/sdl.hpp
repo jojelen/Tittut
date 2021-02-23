@@ -3,6 +3,7 @@
 #include "utils.hpp"
 #include "video-stream.hpp"
 
+#include "v4l-stream.hpp" // FOR V4L2_PIX_FMT.
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <functional>
@@ -43,7 +44,6 @@ class SDLWindow {
     std::unique_ptr<VideoStream> videoStream_;
     int rowPitch_ = 0;
     bool flip_;
-    bool mjpeg_;
 
     void flipBuffer(uint8_t *srcBuffer, uint8_t *dstBuffer) {
         TIMER("Flipping image");
@@ -65,13 +65,14 @@ class SDLWindow {
     }
 
   public:
-    SDLWindow(const std::string &name, int width, int height,
-              std::unique_ptr<VideoStream> &stream, bool mjpeg,
+    SDLWindow(const std::string &name,
+              std::unique_ptr<VideoStream> &stream,
               bool flip = false)
-        : name_(name), videoStream_(std::move(stream)), mjpeg_(mjpeg),
+        : name_(name), videoStream_(std::move(stream)),
           flip_(flip) {
         initSDL();
 
+        auto [width, height, format] = videoStream_->getMetaData();
         win_.reset(SDL_CreateWindow(name_.c_str(), 100, 100, width, height,
                                     SDL_WINDOW_SHOWN));
         if (win_.get() == nullptr) {
@@ -85,10 +86,13 @@ class SDLWindow {
             sdlError("SDL_CreateRenderer");
         }
 
-        int pixelFormat = SDL_PIXELFORMAT_YUY2;
-        if (mjpeg) {
-            std::cout << "Setting RGB24 for texture\n";
+        int pixelFormat = 0;
+        if (format == V4L2_PIX_FMT_MJPEG) {
             pixelFormat = SDL_PIXELFORMAT_RGB24;
+        } else if (format == V4L2_PIX_FMT_YUYV) {
+            pixelFormat = SDL_PIXELFORMAT_YUY2;
+        } else {
+            throw std::invalid_argument("Unknown format of video stream");
         }
         texture_ = SDL_CreateTexture(
             ren_, pixelFormat, SDL_TEXTUREACCESS_STREAMING, width, height);
@@ -159,6 +163,7 @@ class SDLWindow {
         std::vector<uint8_t> flippedBuffer;
         videoStream_->update();
         videoStream_->update();
+        auto [x,y,format] = videoStream_->getMetaData(); // TODO: Fix unused.
         while (!quit_) {
             TIMER("One frame");
 
@@ -171,7 +176,7 @@ class SDLWindow {
                 flipBuffer(buffer, flippedBuffer.data());
                 buffer = flippedBuffer.data();
             }
-            if (mjpeg_) {
+            if (format == V4L2_PIX_FMT_MJPEG) {
                 jpegTemp(buffer, bufferSize);
             } else {
                 updateTexture(static_cast<void *>(buffer));

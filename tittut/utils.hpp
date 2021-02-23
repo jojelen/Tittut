@@ -3,10 +3,10 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <chrono>
+#include <cstring>
 #include <iostream>
 #include <string_view>
 #include <sys/socket.h>
-#include <cstring>
 #include <unistd.h>
 
 #ifndef NDEBUG
