@@ -65,11 +65,9 @@ class SDLWindow {
     }
 
   public:
-    SDLWindow(const std::string &name,
-              std::unique_ptr<VideoStream> &stream,
+    SDLWindow(const std::string &name, std::unique_ptr<VideoStream> &stream,
               bool flip = false)
-        : name_(name), videoStream_(std::move(stream)),
-          flip_(flip) {
+        : name_(name), videoStream_(std::move(stream)), flip_(flip) {
         initSDL();
 
         auto [width, height, format] = videoStream_->getMetaData();
@@ -163,7 +161,7 @@ class SDLWindow {
         std::vector<uint8_t> flippedBuffer;
         videoStream_->update();
         videoStream_->update();
-        auto [x,y,format] = videoStream_->getMetaData(); // TODO: Fix unused.
+        auto [x, y, format] = videoStream_->getMetaData(); // TODO: Fix unused.
         while (!quit_) {
             TIMER("One frame");
 

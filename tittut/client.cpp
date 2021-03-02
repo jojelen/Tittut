@@ -42,9 +42,9 @@ int main(int argc, const char *argv[]) {
         if (parser.get<bool>("tcp")) {
             std::string ip = parser.get<std::string>("ip");
             int port = parser.get<int>("port");
+
             stream =
                 std::make_unique<TcpStream>(ip, port, width, height, format);
-
             windowName = "Video stream from " + ip + ":" + to_string(port);
         } else {
             stream = make_unique<V4LStream>(width, height, format);

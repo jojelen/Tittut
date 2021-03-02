@@ -11,16 +11,19 @@ class VideoServer : TcpInterface {
     int port_ = -1;
     int width_ = 0;
     int height_ = 0;
+    int format_ = 0;
 
     void streamConfigHandler(int sck, uint64_t size) override {
         Package pkg = {.type = PKG_TYPE::STREAM_CONFIG, .data = {}};
         readPackageData(sck, pkg, size);
         width_ = static_cast<int>(getNumFromVec(0, pkg.data));
         height_ = static_cast<int>(getNumFromVec(1, pkg.data));
+        format_ = static_cast<int>(getNumFromVec(2, pkg.data));
 
         std::cout << "Recieved stream configuration:\n";
         std::cout << "Got width = " << width_ << std::endl;
         std::cout << "Got height = " << height_ << std::endl;
+        std::cout << "Got format = " << format_ << std::endl;
     }
 
     void frameHandler(int sck, uint64_t size) override {
@@ -40,7 +43,7 @@ class VideoServer : TcpInterface {
                 if (type.value() == PKG_TYPE::STREAM_CONFIG)
                     break;
             }
-            V4LStream v4l(width_, height_, V4L2_PIX_FMT_YUYV);
+            V4LStream v4l(width_, height_, format_);
 
             sendMsg(socket, "Server configured the video stream successfully");
 

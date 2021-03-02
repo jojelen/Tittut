@@ -100,7 +100,8 @@ class V4LStream : public VideoStream {
         call_ioctl("Set format", VIDIOC_S_FMT, &format);
 
         if (format.fmt.pix.width != static_cast<unsigned int>(width_) ||
-            format.fmt.pix.height != static_cast<unsigned int>(height_))
+            format.fmt.pix.height != static_cast<unsigned int>(height_) ||
+            format.fmt.pix.pixelformat != static_cast<unsigned int>(format_))
             throw std::invalid_argument(
                 std::string("Invalid format dimensions: ") +
                 "Use \"v4l2-ctl --list-formats-ext\" to see available formats");
@@ -214,6 +215,10 @@ class V4LStream : public VideoStream {
     inline void *getBuffer() override { return buffer_; }
 
     inline size_t getBufferSize() const override {
-        return buffers_[currFrame_].buffer.length;
+        // Hack: It seems like v4l reports the same size for YUYV as for MJPEG,
+        // so divide MJPEG buffer size by 5 because it is too big.
+        return format_ == V4L2_PIX_FMT_MJPEG
+                   ? buffers_[currFrame_].buffer.length / 5
+                   : buffers_[currFrame_].buffer.length;
     }
 };

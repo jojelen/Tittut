@@ -13,7 +13,8 @@ class TcpStream : public VideoStream, public TcpInterface {
     void setupStream() const {
         std::cout << "Setting up stream\n";
         StreamConfig cfg = {.width = static_cast<uint64_t>(width_),
-                            .height = static_cast<uint64_t>(height_)};
+                            .height = static_cast<uint64_t>(height_),
+                            .format = static_cast<uint64_t>(format_)};
 
         sendStreamConfig(socket_, cfg);
     }

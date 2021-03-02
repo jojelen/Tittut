@@ -58,6 +58,7 @@ class TcpInterface {
     struct StreamConfig {
         uint64_t width;
         uint64_t height;
+        uint64_t format;
     };
 
     struct Package {
@@ -125,6 +126,7 @@ class TcpInterface {
 
         addNumToVec(static_cast<size_t>(cfg.width), data);
         addNumToVec(static_cast<size_t>(cfg.height), data);
+        addNumToVec(static_cast<size_t>(cfg.format), data);
 
         sendPackage(socket, PKG_TYPE::STREAM_CONFIG, data);
     }
